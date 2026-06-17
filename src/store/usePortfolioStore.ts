@@ -654,18 +654,199 @@ export const usePortfolioStore = create<PortfolioState>()(
 
         const defaultSubmissions: SubmissionItem[] = [];
 
+        const defaultSchoolSubmissions: SubmissionItem[] = [
+          {
+            id: `sub-${planId}-research`,
+            category: '院校研究',
+            item: `深入研究 ${program.school} ${program.major} 项目`,
+            deadline: program.deadline || '',
+            completed: false,
+            notes: '了解课程设置、师资力量、校友去向，在个人陈述中体现匹配度',
+            isCustom: false,
+            daysOffset: -60,
+            programId: planId,
+            isPublic: false,
+          },
+          {
+            id: `sub-${planId}-application-form`,
+            category: '网申',
+            item: '完成网申系统填写',
+            deadline: program.deadline || '',
+            completed: false,
+            notes: '个人信息、教育背景、工作经历等基础信息',
+            isCustom: false,
+            daysOffset: -7,
+            programId: planId,
+            isPublic: false,
+          },
+          {
+            id: `sub-${planId}-fee`,
+            category: '网申',
+            item: '支付申请费',
+            deadline: program.deadline || '',
+            completed: false,
+            notes: '确认申请费金额，准备双币信用卡',
+            isCustom: false,
+            daysOffset: -3,
+            programId: planId,
+            isPublic: false,
+          },
+          {
+            id: `sub-${planId}-supplement`,
+            category: '补充材料',
+            item: '学校补充材料',
+            deadline: program.deadline || '',
+            completed: false,
+            notes: '根据学校具体要求的额外材料',
+            isCustom: false,
+            daysOffset: -5,
+            programId: planId,
+            isPublic: false,
+          },
+        ];
+
         const newPlan: ApplicationPlan = {
           id: planId,
           program,
           timelineItems: defaultTimeline,
-          submissionItems: defaultSubmissions,
+          submissionItems: defaultSchoolSubmissions,
           createdAt: Date.now(),
         };
 
-        set((s) => ({
-          applicationPlans: [...s.applicationPlans, newPlan],
-          activePlanId: s.activePlanId || planId,
-        }));
+        set((s) => {
+          let updatedPublicSubmissions = [...s.submissionItems];
+          if (s.submissionItems.filter((i) => i.isPublic).length === 0) {
+            const defaultPublicSubmissions: SubmissionItem[] = [
+              {
+                id: 'sub-public-transcript',
+                category: '学术材料',
+                item: '官方成绩单',
+                deadline: '',
+                completed: false,
+                notes: '申请官方成绩单，确保密封盖章',
+                isCustom: false,
+                daysOffset: -30,
+                programId: '',
+                isPublic: true,
+              },
+              {
+                id: 'sub-public-language',
+                category: '学术材料',
+                item: '语言成绩送分',
+                deadline: '',
+                completed: false,
+                notes: '完成托福/雅思/GRE 送分',
+                isCustom: false,
+                daysOffset: -25,
+                programId: '',
+                isPublic: true,
+              },
+              {
+                id: 'sub-public-recommendation',
+                category: '推荐信',
+                item: '确认推荐人确认',
+                deadline: '',
+                completed: false,
+                notes: '确认推荐人同意撰写推荐信',
+                isCustom: false,
+                daysOffset: -45,
+                programId: '',
+                isPublic: true,
+              },
+              {
+                id: 'sub-public-recommendation-2',
+                category: '推荐信',
+                item: '推荐信提交',
+                deadline: '',
+                completed: false,
+                notes: '向推荐人提供推荐信提交链接和截止日期',
+                isCustom: false,
+                daysOffset: -21,
+                programId: '',
+                isPublic: true,
+              },
+              {
+                id: 'sub-public-essay-draft',
+                category: '文书',
+                item: '个人陈述初稿',
+                deadline: '',
+                completed: false,
+                notes: '完成个人陈述第一稿',
+                isCustom: false,
+                daysOffset: -40,
+                programId: '',
+                isPublic: true,
+              },
+              {
+                id: 'sub-public-essay-final',
+                category: '文书',
+                item: '个人陈述定稿',
+                deadline: '',
+                completed: false,
+                notes: '完成个人陈述终稿，检查语法和内容',
+                isCustom: false,
+                daysOffset: -10,
+                programId: '',
+                isPublic: true,
+              },
+              {
+                id: 'sub-public-resume',
+                category: '文书',
+                item: '简历 / CV',
+                deadline: '',
+                completed: false,
+                notes: '准备英文简历，一页为宜',
+                isCustom: false,
+                daysOffset: -15,
+                programId: '',
+                isPublic: true,
+              },
+              {
+                id: 'sub-public-portfolio-pdf',
+                category: '作品集',
+                item: '最终作品集 PDF 版本',
+                deadline: '',
+                completed: false,
+                notes: '确保所有项目完整呈现，文件大小符合院校要求',
+                isCustom: false,
+                daysOffset: -3,
+                programId: '',
+                isPublic: true,
+              },
+              {
+                id: 'sub-public-portfolio-review',
+                category: '作品集',
+                item: '他人审阅反馈',
+                deadline: '',
+                completed: false,
+                notes: '建议至少2-3人审阅，包括本专业和非本专业人士',
+                isCustom: false,
+                daysOffset: -14,
+                programId: '',
+                isPublic: true,
+              },
+              {
+                id: 'sub-public-portfolio-format',
+                category: '作品集',
+                item: '文件格式和命名规范',
+                deadline: '',
+                completed: false,
+                notes: '通常要求 PDF 格式，命名规范：LastName_FirstName_Portfolio.pdf',
+                isCustom: false,
+                daysOffset: -2,
+                programId: '',
+                isPublic: true,
+              },
+            ];
+            updatedPublicSubmissions = [...s.submissionItems, ...defaultPublicSubmissions];
+          }
+
+          return {
+            applicationPlans: [...s.applicationPlans, newPlan],
+            activePlanId: s.activePlanId || planId,
+            submissionItems: updatedPublicSubmissions,
+          };
+        });
 
         return newPlan;
       },
@@ -688,6 +869,8 @@ export const usePortfolioStore = create<PortfolioState>()(
             const updatedTimeline = plan.timelineItems.map((item) => {
               if (item.isCustom) return item;
 
+              let updatedItem = { ...item };
+
               if (updates.deadline && newProgram.deadline) {
                 const oldDeadline = new Date(plan.program.deadline);
                 const newDeadlineDate = new Date(newProgram.deadline);
@@ -698,29 +881,50 @@ export const usePortfolioStore = create<PortfolioState>()(
                   );
                   const newDate = new Date(newDeadlineDate);
                   newDate.setDate(newDate.getDate() + daysDiff);
-                  return {
-                    ...item,
-                    deadline: newDate.toISOString().split('T')[0],
-                  };
+                  updatedItem.deadline = newDate.toISOString().split('T')[0];
                 }
               }
 
               if (item.category === 'deadline' && newProgram.deadline) {
-                return {
-                  ...item,
-                  title: '申请截止',
-                  description: `${newProgram.school} ${newProgram.major} 申请提交截止`,
-                  deadline: newProgram.deadline,
-                };
+                updatedItem.title = '申请截止';
+                updatedItem.description = `${newProgram.school} ${newProgram.major} 申请提交截止`;
+                updatedItem.deadline = newProgram.deadline;
               }
 
-              return item;
+              return updatedItem;
+            });
+
+            const updatedSubmissions = plan.submissionItems.map((item) => {
+              if (item.isCustom) return item;
+
+              let updatedItem = { ...item };
+
+              if (updates.deadline && newProgram.deadline) {
+                const oldDeadline = new Date(plan.program.deadline);
+                const newDeadlineDate = new Date(newProgram.deadline);
+                const oldItemDate = new Date(item.deadline);
+                if (!isNaN(oldDeadline.getTime()) && !isNaN(newDeadlineDate.getTime()) && !isNaN(oldItemDate.getTime())) {
+                  const daysDiff = Math.round(
+                    (oldItemDate.getTime() - oldDeadline.getTime()) / (1000 * 60 * 60 * 24)
+                  );
+                  const newDate = new Date(newDeadlineDate);
+                  newDate.setDate(newDate.getDate() + daysDiff);
+                  updatedItem.deadline = newDate.toISOString().split('T')[0];
+                }
+              }
+
+              if (item.id.includes('-research') && !item.isCustom) {
+                updatedItem.item = `深入研究 ${newProgram.school} ${newProgram.major} 项目`;
+              }
+
+              return updatedItem;
             });
 
             return {
               ...plan,
               program: newProgram,
               timelineItems: updatedTimeline,
+              submissionItems: updatedSubmissions,
             };
           });
           return { applicationPlans: newPlans };
@@ -926,8 +1130,116 @@ export const usePortfolioStore = create<PortfolioState>()(
         }),
 
       regenerateActivePlanSubmissions: () => {
-        // 保留已勾选状态、备注、自定义项
-        // 此处可扩展为根据当前专业重新生成
+        const state = get();
+        const activePlan = state.applicationPlans.find((p) => p.id === state.activePlanId);
+
+        const defaultPublicIds: Record<string, { category: string; item: string; notes: string; daysOffset: number }> = {
+          'sub-public-transcript': { category: '学术材料', item: '官方成绩单', notes: '申请官方成绩单，确保密封盖章', daysOffset: -30 },
+          'sub-public-language': { category: '学术材料', item: '语言成绩送分', notes: '完成托福/雅思/GRE 送分', daysOffset: -25 },
+          'sub-public-recommendation': { category: '推荐信', item: '确认推荐人确认', notes: '确认推荐人同意撰写推荐信', daysOffset: -45 },
+          'sub-public-recommendation-2': { category: '推荐信', item: '推荐信提交', notes: '向推荐人提供推荐信提交链接和截止日期', daysOffset: -21 },
+          'sub-public-essay-draft': { category: '文书', item: '个人陈述初稿', notes: '完成个人陈述第一稿', daysOffset: -40 },
+          'sub-public-essay-final': { category: '文书', item: '个人陈述定稿', notes: '完成个人陈述终稿，检查语法和内容', daysOffset: -10 },
+          'sub-public-resume': { category: '文书', item: '简历 / CV', notes: '准备英文简历，一页为宜', daysOffset: -15 },
+          'sub-public-portfolio-pdf': { category: '作品集', item: '最终作品集 PDF 版本', notes: '确保所有项目完整呈现，文件大小符合院校要求', daysOffset: -3 },
+          'sub-public-portfolio-review': { category: '作品集', item: '他人审阅反馈', notes: '建议至少2-3人审阅，包括本专业和非本专业人士', daysOffset: -14 },
+          'sub-public-portfolio-format': { category: '作品集', item: '文件格式和命名规范', notes: '通常要求 PDF 格式，命名规范：LastName_FirstName_Portfolio.pdf', daysOffset: -2 },
+        };
+
+        const mergedPublicItems: SubmissionItem[] = [];
+        Object.entries(defaultPublicIds).forEach(([id, defaults]) => {
+          const existing = state.submissionItems.find((i) => i.id === id);
+          if (existing) {
+            mergedPublicItems.push({
+              ...existing,
+              category: defaults.category,
+              item: defaults.item,
+            });
+          } else {
+            mergedPublicItems.push({
+              id,
+              category: defaults.category,
+              item: defaults.item,
+              deadline: '',
+              completed: false,
+              notes: defaults.notes,
+              isCustom: false,
+              daysOffset: defaults.daysOffset,
+              programId: '',
+              isPublic: true,
+            });
+          }
+        });
+
+        const customPublicItems = state.submissionItems.filter((i) => i.isPublic && i.isCustom);
+        const finalPublicItems = [...mergedPublicItems, ...customPublicItems];
+
+        if (!activePlan) {
+          set({ submissionItems: finalPublicItems });
+          return;
+        }
+
+        const defaultSchoolIds: Record<string, { category: string; item: string; notes: string; daysOffset: number }> = {
+          [`sub-${activePlan.id}-research`]: {
+            category: '院校研究',
+            item: `深入研究 ${activePlan.program.school} ${activePlan.program.major} 项目`,
+            notes: '了解课程设置、师资力量、校友去向，在个人陈述中体现匹配度',
+            daysOffset: -60,
+          },
+          [`sub-${activePlan.id}-application-form`]: {
+            category: '网申',
+            item: '完成网申系统填写',
+            notes: '个人信息、教育背景、工作经历等基础信息',
+            daysOffset: -7,
+          },
+          [`sub-${activePlan.id}-fee`]: {
+            category: '网申',
+            item: '支付申请费',
+            notes: '确认申请费金额，准备双币信用卡',
+            daysOffset: -3,
+          },
+          [`sub-${activePlan.id}-supplement`]: {
+            category: '补充材料',
+            item: '学校补充材料',
+            notes: '根据学校具体要求的额外材料',
+            daysOffset: -5,
+          },
+        };
+
+        const mergedSchoolItems: SubmissionItem[] = [];
+        Object.entries(defaultSchoolIds).forEach(([id, defaults]) => {
+          const existing = activePlan.submissionItems.find((i) => i.id === id);
+          if (existing) {
+            mergedSchoolItems.push({
+              ...existing,
+              category: defaults.category,
+              item: defaults.item,
+            });
+          } else {
+            mergedSchoolItems.push({
+              id,
+              category: defaults.category,
+              item: defaults.item,
+              deadline: activePlan.program.deadline || '',
+              completed: false,
+              notes: defaults.notes,
+              isCustom: false,
+              daysOffset: defaults.daysOffset,
+              programId: activePlan.id,
+              isPublic: false,
+            });
+          }
+        });
+
+        const customSchoolItems = activePlan.submissionItems.filter((i) => i.isCustom);
+        const finalSchoolItems = [...mergedSchoolItems, ...customSchoolItems];
+
+        set({
+          submissionItems: finalPublicItems,
+          applicationPlans: state.applicationPlans.map((plan) =>
+            plan.id === activePlan.id ? { ...plan, submissionItems: finalSchoolItems } : plan
+          ),
+        });
       },
 
       exportToPDF: async () => {
