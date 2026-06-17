@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { Download, HardDrive, FileText, FileCheck, FileSpreadsheet } from 'lucide-react';
+import { Download, HardDrive, FileText, FileCheck, FileSpreadsheet, ListTodo } from 'lucide-react';
 import { usePortfolioStore } from '../store/usePortfolioStore';
 import SubmissionList from '../components/export/SubmissionList';
+import ApplicationTimeline from '../components/export/ApplicationTimeline';
 import OfflineManager from '../components/export/OfflineManager';
 
 export default function ExportPage() {
   const { exportToPDF, targetProgram, projects } = usePortfolioStore();
-  const [activeTab, setActiveTab] = useState<'submission' | 'export' | 'offline'>('submission');
+  const [activeTab, setActiveTab] = useState<'timeline' | 'submission' | 'export' | 'offline'>('timeline');
   const [exporting, setExporting] = useState(false);
 
   const handleExportPDF = async () => {
@@ -38,6 +39,17 @@ export default function ExportPage() {
           </div>
 
           <div className="mt-6 flex gap-2 border-b border-zinc-200 overflow-x-auto">
+            <button
+              onClick={() => setActiveTab('timeline')}
+              className={`flex items-center gap-2 px-4 py-3 font-medium text-sm border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === 'timeline'
+                  ? 'border-green-600 text-green-600'
+                  : 'border-transparent text-zinc-500 hover:text-zinc-700'
+              }`}
+            >
+              <ListTodo className="w-4 h-4" />
+              申请时间线
+            </button>
             <button
               onClick={() => setActiveTab('submission')}
               className={`flex items-center gap-2 px-4 py-3 font-medium text-sm border-b-2 transition-colors whitespace-nowrap ${
@@ -73,6 +85,12 @@ export default function ExportPage() {
             </button>
           </div>
         </div>
+
+        {activeTab === 'timeline' && (
+          <div className="max-w-4xl mx-auto">
+            <ApplicationTimeline />
+          </div>
+        )}
 
         {activeTab === 'submission' && (
           <div className="max-w-4xl mx-auto">

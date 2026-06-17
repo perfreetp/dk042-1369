@@ -111,6 +111,20 @@ export interface SubmissionItem {
   deadline: string;
   completed: boolean;
   notes: string;
+  isCustom?: boolean;
+  daysOffset?: number;
+}
+
+export interface TimelineItem {
+  id: string;
+  title: string;
+  description: string;
+  category: 'deadline' | 'portfolio' | 'recommendation' | 'material' | 'other';
+  deadline: string;
+  completed: boolean;
+  importance: 'high' | 'medium' | 'low';
+  notes: string;
+  isCustom?: boolean;
 }
 
 export interface VersionDiff {

@@ -1,8 +1,15 @@
-import { CheckCircle2, Circle, AlertCircle } from 'lucide-react';
+import { CheckCircle2, Circle, AlertCircle, RefreshCw } from 'lucide-react';
 import { usePortfolioStore } from '../../store/usePortfolioStore';
+import { useEffect } from 'react';
 
 export default function MaterialChecklist() {
-  const { materialChecklist, updateMaterialCheckItem, projects, background } = usePortfolioStore();
+  const { materialChecklist, updateMaterialCheckItem, regenerateMaterialChecklist, projects, background } = usePortfolioStore();
+
+  useEffect(() => {
+    if (materialChecklist.length === 0) {
+      regenerateMaterialChecklist();
+    }
+  }, [materialChecklist.length, regenerateMaterialChecklist]);
 
   const categories = [...new Set(materialChecklist.map((m) => m.category))];
 
