@@ -29,6 +29,7 @@ interface PortfolioState {
   materialChecklist: MaterialCheckItem[];
   versions: PortfolioVersion[];
   currentVersionId: string | null;
+  submissionItems: SubmissionItem[];
 
   addProject: (project: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
@@ -57,6 +58,8 @@ interface PortfolioState {
   compareVersions: (v1Id: string, v2Id: string) => VersionDiff | null;
 
   generateSubmissionList: () => SubmissionItem[];
+  updateSubmissionItem: (id: string, updates: Partial<SubmissionItem>) => void;
+  regenerateSubmissionList: () => SubmissionItem[];
   exportToPDF: () => Promise<void>;
   exportToJSON: () => string;
   importFromJSON: (json: string) => boolean;
@@ -81,6 +84,7 @@ export const usePortfolioStore = create<PortfolioState>()(
       materialChecklist: [...defaultMaterialChecklist],
       versions: [],
       currentVersionId: null,
+      submissionItems: [],
 
       addProject: (project) =>
         set((state) => ({
@@ -271,8 +275,40 @@ export const usePortfolioStore = create<PortfolioState>()(
 
       generateSubmissionList: () => {
         const state = get();
+        if (state.submissionItems.length > 0) {
+          return state.submissionItems;
+        }
         const data = state.getPortfolioData();
-        return generateSubmissionList(data);
+        const newItems = generateSubmissionList(data);
+        set({ submissionItems: newItems });
+        return newItems;
+      },
+
+      updateSubmissionItem: (id, updates) =>
+        set((state) => ({
+          submissionItems: state.submissionItems.map((item) =>
+            item.id === id ? { ...item, ...updates } : item
+          ),
+        })),
+
+      regenerateSubmissionList: () => {
+        const state = get();
+        const data = state.getPortfolioData();
+        const newItems = generateSubmissionList(data);
+        const preservedState: Record<string, { completed: boolean; notes: string }> = {};
+        state.submissionItems.forEach((item) => {
+          preservedState[item.item] = {
+            completed: item.completed,
+            notes: item.notes || '',
+          };
+        });
+        const mergedItems = newItems.map((item) => ({
+          ...item,
+          completed: preservedState[item.item]?.completed ?? item.completed,
+          notes: preservedState[item.item]?.notes ?? item.notes,
+        }));
+        set({ submissionItems: mergedItems });
+        return mergedItems;
       },
 
       exportToPDF: async () => {
@@ -318,7 +354,9 @@ export const usePortfolioStore = create<PortfolioState>()(
           background: initialBackground,
           targetProgram: null,
           materialChecklist: [...defaultMaterialChecklist],
+          versions: [],
           currentVersionId: null,
+          submissionItems: [],
         }),
     }),
     {

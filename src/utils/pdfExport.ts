@@ -3,17 +3,235 @@ import html2canvas from 'html2canvas';
 import type { PortfolioData, AbilityGap } from '../types';
 import { calculateOverallScore } from './diagnosis';
 
+async function renderReportToDOM(
+  data: PortfolioData,
+  abilityGaps: AbilityGap[]
+): Promise<HTMLElement> {
+  const overallScore = calculateOverallScore(abilityGaps);
+  const sortedProjects = [...data.projects].sort((a, b) => a.order - b.order);
+  const completed = data.materialChecklist.filter((m) => m.completed).length;
+  const total = data.materialChecklist.length;
+  const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const criticalGaps = abilityGaps.filter((g) => g.gap > 15);
+  const incompleteItems = data.materialChecklist.filter((m) => m.required && !m.completed);
+
+  const scoreColor =
+    overallScore >= 80
+      ? '#16a34a'
+      : overallScore >= 60
+      ? '#ca8a04'
+      : '#dc2626';
+
+  let targetProgramHTML = '';
+  if (data.targetProgram) {
+    targetProgramHTML = `
+      <div style="margin-bottom: 32px;">
+        <h2 style="font-size: 22px; font-weight: 700; color: #18181b; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #e4e4e7;">🎯 目标专业</h2>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;">
+          <p style="font-size: 16px; color: #334155; margin: 0 0 8px 0;"><strong>院校：</strong>${data.targetProgram.school}</p>
+          <p style="font-size: 16px; color: #334155; margin: 0 0 8px 0;"><strong>专业：</strong>${data.targetProgram.major} (${data.targetProgram.degree})</p>
+          ${data.targetProgram.deadline ? `<p style="font-size: 16px; color: #334155; margin: 0;"><strong>截止日期：</strong>${new Date(data.targetProgram.deadline).toLocaleDateString('zh-CN')}</p>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  let projectsHTML = '';
+  sortedProjects.forEach((project, index) => {
+    projectsHTML += `
+      <div style="margin-bottom: 24px; padding: 20px; background: #fafafa; border: 1px solid #f0f0f0; border-radius: 8px; border-left: 4px solid #f97316;">
+        <h4 style="font-size: 17px; font-weight: 600; color: #27272a; margin: 0 0 10px 0;">
+          <span style="color: #f97316;">${index + 1}.</span> ${project.title || '未命名项目'}
+        </h4>
+        <p style="font-size: 14px; color: #52525b; margin: 4px 0;"><strong>角色：</strong>${project.role || '未填写'}</p>
+        <p style="font-size: 14px; color: #52525b; margin: 4px 0;"><strong>时间：</strong>${project.startDate || '未填写'} - ${project.endDate || '未填写'}</p>
+        ${project.outputs.length > 0 ? `<p style="font-size: 14px; color: #52525b; margin: 4px 0;"><strong>产出：</strong>${project.outputs.join('、')}</p>` : ''}
+        ${project.processNodes.length > 0 ? `<p style="font-size: 14px; color: #52525b; margin: 4px 0;"><strong>过程节点：</strong>${project.processNodes.length} 个</p>` : ''}
+        ${project.description ? `<p style="font-size: 14px; color: #52525b; margin: 10px 0 0 0; line-height: 1.7;"><strong>描述：</strong>${project.description}</p>` : ''}
+      </div>
+    `;
+  });
+
+  let abilityHTML = '';
+  abilityGaps.forEach((gap) => {
+    const gapColor =
+      gap.gap > 20 ? '#dc2626' : gap.gap > 10 ? '#f59e0b' : '#16a34a';
+    const barWidth = 500;
+    const currentWidth = (gap.currentLevel / 100) * barWidth;
+    const requiredWidth = (gap.requiredLevel / 100) * barWidth;
+
+    abilityHTML += `
+      <div style="margin-bottom: 20px;">
+        <div style="display: flex; align-items: center; margin-bottom: 8px;">
+          <span style="font-size: 15px; font-weight: 600; color: #27272a; width: 120px; flex-shrink: 0;">${gap.dimension}</span>
+          <div style="flex: 1; position: relative; height: 14px;">
+            <div style="position: absolute; top: 0; left: 0; width: ${requiredWidth}px; height: 14px; background: #d4d4d8; border-radius: 7px;"></div>
+            <div style="position: absolute; top: 0; left: 0; width: ${currentWidth}px; height: 14px; background: ${gapColor}; border-radius: 7px;"></div>
+          </div>
+          <span style="font-size: 13px; color: #71717a; margin-left: 12px; width: 80px; text-align: right; flex-shrink: 0;">${gap.currentLevel}/${gap.requiredLevel}</span>
+        </div>
+        ${gap.gap > 0 && gap.suggestions.length > 0 ? `
+          <div style="margin-left: 120px; padding: 10px 14px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 6px;">
+            <p style="font-size: 13px; color: #92400e; margin: 0; line-height: 1.6;">💡 ${gap.suggestions[0]}</p>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  });
+
+  let suggestionsHTML = '';
+  if (criticalGaps.length > 0) {
+    criticalGaps.forEach((gap) => {
+      suggestionsHTML += `
+        <div style="margin-bottom: 18px; padding: 16px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px;">
+          <h4 style="font-size: 16px; font-weight: 600; color: #991b1b; margin: 0 0 8px 0;">⚠️ ${gap.dimension}（缺口 ${gap.gap} 分）</h4>
+          <ul style="margin: 0; padding-left: 20px;">
+            ${gap.suggestions.slice(0, 2).map((s) => `<li style="font-size: 14px; color: #7f1d1d; line-height: 1.8; margin-bottom: 4px;">${s}</li>`).join('')}
+          </ul>
+        </div>
+      `;
+    });
+  }
+
+  const categories = [...new Set(data.materialChecklist.map((m) => m.category))];
+  let materialHTML = '';
+  categories.forEach((category) => {
+    const categoryItems = data.materialChecklist.filter((m) => m.category === category);
+    let itemsHTML = '';
+    categoryItems.forEach((item) => {
+      const checkMark = item.completed ? '✅' : '⬜';
+      const priorityMark =
+        item.priority === 'high' ? '★' : item.priority === 'medium' ? '☆' : '';
+      const requiredMark = item.required ? '[必]' : '[选]';
+      itemsHTML += `<p style="font-size: 14px; color: #3f3f46; margin: 4px 0; line-height: 1.6;">${checkMark} ${requiredMark}${priorityMark} ${item.item}</p>`;
+    });
+
+    materialHTML += `
+      <div style="margin-bottom: 20px;">
+        <h4 style="font-size: 16px; font-weight: 600; color: #27272a; margin: 0 0 10px 0; padding-bottom: 6px; border-bottom: 1px solid #e4e4e7;">${category}</h4>
+        <div style="padding-left: 8px;">${itemsHTML}</div>
+      </div>
+    `;
+  });
+
+  let summaryActionHTML = '';
+  if (criticalGaps.length > 0) {
+    summaryActionHTML += `
+      <div style="margin-bottom: 24px;">
+        <h4 style="font-size: 16px; font-weight: 600; color: #27272a; margin: 0 0 12px 0;">🎯 高优先级改进项：</h4>
+        <ol style="margin: 0; padding-left: 28px;">
+          ${criticalGaps
+            .slice(0, 3)
+            .map((g, i) => `<li style="font-size: 15px; color: #3f3f46; line-height: 1.8; margin-bottom: 6px;">${g.dimension} - 缺口 ${g.gap} 分</li>`)
+            .join('')}
+        </ol>
+      </div>
+    `;
+  }
+  if (incompleteItems.length > 0) {
+    summaryActionHTML += `
+      <div style="margin-bottom: 24px;">
+        <h4 style="font-size: 16px; font-weight: 600; color: #27272a; margin: 0 0 12px 0;">📋 待补充材料：</h4>
+        <ol style="margin: 0; padding-left: 28px;">
+          ${incompleteItems
+            .slice(0, 5)
+            .map((it, i) => `<li style="font-size: 15px; color: #3f3f46; line-height: 1.8; margin-bottom: 6px;">${it.item}</li>`)
+            .join('')}
+        </ol>
+      </div>
+    `;
+  }
+
+  const summaryText =
+    overallScore >= 80
+      ? '您的作品集整体质量优秀，已基本达到目标院校的申请要求。建议继续完善细节，打磨作品呈现效果。'
+      : overallScore >= 60
+      ? '您的作品集已有较好的基础，但仍有提升空间。建议按照下方建议重点加强相关能力维度。'
+      : '您的作品集还需要较多的准备工作。建议按照优先级系统性地提升能力、补充项目经历。';
+
+  const html = `
+    <div id="pdf-report-container" style="width: 794px; background: white; padding: 60px 70px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; color: #18181b; line-height: 1.6;">
+      <div style="text-align: center; padding-bottom: 32px; border-bottom: 3px solid #1e3a8a; margin-bottom: 40px;">
+        <h1 style="font-size: 32px; font-weight: 800; color: #1e3a8a; margin: 0 0 16px 0;">作品集诊断报告</h1>
+        <p style="font-size: 15px; color: #71717a; margin: 0;">生成日期：${new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</p>
+      </div>
+
+      <div style="background: linear-gradient(135deg, #1e3a8a 0%, #312e81 100%); border-radius: 12px; padding: 28px 32px; margin-bottom: 40px; color: white;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <div>
+            <p style="font-size: 15px; color: #bfdbfe; margin: 0 0 8px 0;">综合评估分数</p>
+            <div style="display: flex; align-items: baseline; gap: 8px;">
+              <span style="font-size: 56px; font-weight: 800; color: ${overallScore >= 80 ? '#86efac' : overallScore >= 60 ? '#fde68a' : '#fca5a5'};">${overallScore}</span>
+              <span style="font-size: 18px; color: #e0e7ff;">/ 100</span>
+            </div>
+          </div>
+          <div style="text-align: right;">
+            <div style="width: 80px; height: 80px; border-radius: 50%; background: rgba(255,255,255,0.15); display: flex; align-items: center; justify-content: center; font-size: 36px;">
+              ${overallScore >= 80 ? '🎉' : overallScore >= 60 ? '💪' : '🚀'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      ${targetProgramHTML}
+
+      <div style="margin-bottom: 32px;">
+        <h2 style="font-size: 22px; font-weight: 700; color: #18181b; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e4e4e7;">📁 项目概览 (${sortedProjects.length})</h2>
+        ${sortedProjects.length > 0 ? projectsHTML : '<p style="color: #a1a1aa; font-style: italic;">暂无项目</p>'}
+      </div>
+
+      <div style="margin-bottom: 32px;">
+        <h2 style="font-size: 22px; font-weight: 700; color: #18181b; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e4e4e7;">📊 能力分析</h2>
+        ${abilityGaps.length > 0 ? abilityHTML : '<p style="color: #a1a1aa; font-style: italic;">请先选择目标专业进行能力诊断</p>'}
+      </div>
+
+      ${criticalGaps.length > 0 ? `
+        <div style="margin-bottom: 32px;">
+          <h2 style="font-size: 22px; font-weight: 700; color: #18181b; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e4e4e7;">💡 改进建议</h2>
+          ${suggestionsHTML}
+        </div>
+      ` : ''}
+
+      <div style="margin-bottom: 32px;">
+        <h2 style="font-size: 22px; font-weight: 700; color: #18181b; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e4e4e7;">✅ 材料清单 (${completed}/${total} - ${percentage}%)</h2>
+        <div style="margin-bottom: 20px;">
+          <div style="width: 100%; height: 12px; background: #e4e4e7; border-radius: 6px; overflow: hidden;">
+            <div style="width: ${percentage}%; height: 100%; background: linear-gradient(90deg, #1e3a8a 0%, #4f46e5 100%); transition: width 0.5s;"></div>
+          </div>
+        </div>
+        ${materialHTML}
+      </div>
+
+      <div style="margin-bottom: 32px; padding: 28px; background: linear-gradient(135deg, #fefce8 0%, #fef9c3 100%); border-radius: 12px; border: 1px solid #fde68a;">
+        <h2 style="font-size: 22px; font-weight: 700; color: #713f12; margin: 0 0 16px 0; text-align: center;">📝 评估总结</h2>
+        <p style="font-size: 16px; color: #78350f; margin: 0 0 20px 0; line-height: 1.8; text-align: center;">${summaryText}</p>
+        ${summaryActionHTML}
+      </div>
+
+      <div style="text-align: center; padding-top: 28px; border-top: 1px solid #e4e4e7; color: #a1a1aa; font-size: 13px;">
+        本报告由作品集诊断工具自动生成，仅供参考
+      </div>
+    </div>
+  `;
+
+  const wrapper = document.createElement('div');
+  wrapper.style.position = 'fixed';
+  wrapper.style.left = '-9999px';
+  wrapper.style.top = '0';
+  wrapper.style.zIndex = '-9999';
+  wrapper.innerHTML = html;
+  document.body.appendChild(wrapper);
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  return wrapper.firstElementChild as HTMLElement;
+}
+
 export async function exportToPDF(
   data: PortfolioData,
   abilityGaps: AbilityGap[],
   elementId?: string
 ): Promise<void> {
-  const doc = new jsPDF('p', 'mm', 'a4');
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 20;
-  let yPosition = margin;
-
   if (elementId) {
     const element = document.getElementById(elementId);
     if (element) {
@@ -22,287 +240,43 @@ export async function exportToPDF(
     }
   }
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(24);
-  doc.text('作品集诊断报告', pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += 15;
+  const reportElement = await renderReportToDOM(data, abilityGaps);
 
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`生成日期：${new Date().toLocaleDateString('zh-CN')}`, pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += 20;
+  try {
+    const canvas = await html2canvas(reportElement, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      windowWidth: 900,
+    });
 
-  const overallScore = calculateOverallScore(abilityGaps);
-  doc.setFillColor(30, 58, 138);
-  doc.roundedRect(margin, yPosition, pageWidth - margin * 2, 35, 3, 3, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.text('综合评估分数', margin + 10, yPosition + 15);
-  doc.setFontSize(28);
-  doc.text(`${overallScore} 分`, pageWidth - margin - 30, yPosition + 22, { align: 'right' });
-  doc.setTextColor(0, 0, 0);
-  yPosition += 50;
+    const imgData = canvas.toDataURL('image/png');
+    const imgWidth = 210;
+    const pageHeight = 297;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-  if (data.targetProgram) {
-    doc.setFontSize(18);
-    doc.setFont('helvetica', 'bold');
-    doc.text('目标专业', margin, yPosition);
-    yPosition += 10;
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`院校：${data.targetProgram.school}`, margin, yPosition);
-    yPosition += 7;
-    doc.text(`专业：${data.targetProgram.major} (${data.targetProgram.degree})`, margin, yPosition);
-    yPosition += 7;
-    if (data.targetProgram.deadline) {
-      doc.text(`截止日期：${data.targetProgram.deadline}`, margin, yPosition);
-      yPosition += 7;
-    }
-    yPosition += 10;
-  }
+    const doc = new jsPDF('p', 'mm', 'a4');
+    let heightLeft = imgHeight;
+    let position = 0;
 
-  if (yPosition > pageHeight - 50) {
-    doc.addPage();
-    yPosition = margin;
-  }
+    doc.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
 
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  doc.text('项目概览', margin, yPosition);
-  yPosition += 10;
-
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-  const sortedProjects = [...data.projects].sort((a, b) => a.order - b.order);
-  sortedProjects.forEach((project, index) => {
-    if (yPosition > pageHeight - 40) {
+    while (heightLeft >= 0) {
+      position = heightLeft - imgHeight;
       doc.addPage();
-      yPosition = margin;
+      doc.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
     }
 
-    doc.setFillColor(249, 115, 22);
-    doc.roundedRect(margin, yPosition, 5, 5, 1, 1, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.text(`${index + 1}. ${project.title}`, margin + 12, yPosition + 4);
-    yPosition += 8;
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.text(`角色：${project.role || '未填写'}`, margin + 12, yPosition);
-    yPosition += 5;
-    doc.text(`时间：${project.startDate || '未填写'} - ${project.endDate || '未填写'}`, margin + 12, yPosition);
-    yPosition += 5;
-
-    if (project.outputs.length > 0) {
-      doc.text(`产出：${project.outputs.join('、')}`, margin + 12, yPosition);
-      yPosition += 5;
+    const fileName = `作品集诊断报告_${new Date().toISOString().split('T')[0]}.pdf`;
+    doc.save(fileName);
+  } finally {
+    if (reportElement && reportElement.parentNode) {
+      reportElement.parentNode.removeChild(reportElement);
     }
-
-    if (project.processNodes.length > 0) {
-      doc.text(`过程节点：${project.processNodes.length}个`, margin + 12, yPosition);
-      yPosition += 5;
-    }
-
-    yPosition += 5;
-  });
-
-  yPosition += 5;
-
-  if (abilityGaps.length > 0) {
-    if (yPosition > pageHeight - 50) {
-      doc.addPage();
-      yPosition = margin;
-    }
-
-    doc.setFontSize(18);
-    doc.setFont('helvetica', 'bold');
-    doc.text('能力分析', margin, yPosition);
-    yPosition += 12;
-
-    abilityGaps.forEach((gap) => {
-      if (yPosition > pageHeight - 30) {
-        doc.addPage();
-        yPosition = margin;
-      }
-
-      const barWidth = 120;
-      const barX = margin + 35;
-      const gapColor = gap.gap > 20 ? [220, 38, 38] : gap.gap > 10 ? [245, 158, 11] : [34, 197, 94];
-
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'normal');
-      doc.text(gap.dimension, margin, yPosition + 4);
-
-      doc.setFillColor(230, 230, 230);
-      doc.roundedRect(barX, yPosition, barWidth, 6, 2, 2, 'F');
-
-      const requiredWidth = (gap.requiredLevel / 100) * barWidth;
-      doc.setFillColor(200, 200, 200);
-      doc.roundedRect(barX, yPosition, requiredWidth, 6, 2, 2, 'F');
-
-      const currentWidth = (gap.currentLevel / 100) * barWidth;
-      doc.setFillColor(gapColor[0], gapColor[1], gapColor[2]);
-      doc.roundedRect(barX, yPosition, Math.min(currentWidth, barWidth), 6, 2, 2, 'F');
-
-      doc.setFontSize(9);
-      doc.text(`${gap.currentLevel}/${gap.requiredLevel}`, barX + barWidth + 5, yPosition + 5);
-
-      yPosition += 12;
-    });
-
-    yPosition += 5;
   }
-
-  const criticalGaps = abilityGaps.filter((g) => g.gap > 15);
-  if (criticalGaps.length > 0) {
-    if (yPosition > pageHeight - 50) {
-      doc.addPage();
-      yPosition = margin;
-    }
-
-    doc.setFontSize(18);
-    doc.setFont('helvetica', 'bold');
-    doc.text('改进建议', margin, yPosition);
-    yPosition += 12;
-
-    criticalGaps.forEach((gap) => {
-      if (yPosition > pageHeight - 40) {
-        doc.addPage();
-        yPosition = margin;
-      }
-
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`● ${gap.dimension}（缺口 ${gap.gap} 分）`, margin, yPosition);
-      yPosition += 7;
-
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      gap.suggestions.slice(0, 2).forEach((suggestion) => {
-        if (yPosition > pageHeight - 20) {
-          doc.addPage();
-          yPosition = margin;
-        }
-        doc.text(`  - ${suggestion}`, margin + 5, yPosition);
-        yPosition += 6;
-      });
-      yPosition += 4;
-    });
-  }
-
-  if (yPosition > pageHeight - 50) {
-    doc.addPage();
-    yPosition = margin;
-  }
-
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  doc.text('材料清单完成度', margin, yPosition);
-  yPosition += 10;
-
-  const completed = data.materialChecklist.filter((m) => m.completed).length;
-  const total = data.materialChecklist.length;
-  const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
-
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`已完成：${completed}/${total} (${percentage}%)`, margin, yPosition);
-  yPosition += 8;
-
-  const progressWidth = pageWidth - margin * 2;
-  doc.setFillColor(230, 230, 230);
-  doc.roundedRect(margin, yPosition, progressWidth, 8, 3, 3, 'F');
-  doc.setFillColor(30, 58, 138);
-  doc.roundedRect(margin, yPosition, (percentage / 100) * progressWidth, 8, 3, 3, 'F');
-  yPosition += 20;
-
-  const categories = [...new Set(data.materialChecklist.map((m) => m.category))];
-  categories.forEach((category) => {
-    if (yPosition > pageHeight - 30) {
-      doc.addPage();
-      yPosition = margin;
-    }
-
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text(category, margin, yPosition);
-    yPosition += 8;
-
-    const categoryItems = data.materialChecklist.filter((m) => m.category === category);
-    categoryItems.forEach((item) => {
-      if (yPosition > pageHeight - 20) {
-        doc.addPage();
-        yPosition = margin;
-      }
-
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      const checkMark = item.completed ? '✓' : '○';
-      const priorityMark = item.priority === 'high' ? '★' : item.priority === 'medium' ? '☆' : '';
-      const requiredMark = item.required ? '[必]' : '[选]';
-      doc.text(`${checkMark} ${requiredMark}${priorityMark} ${item.item}`, margin + 5, yPosition);
-      yPosition += 6;
-    });
-    yPosition += 4;
-  });
-
-  doc.addPage();
-  yPosition = margin;
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.text('作品集评估总结', pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += 15;
-
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-
-  let summary = '';
-  if (overallScore >= 80) {
-    summary = '您的作品集整体质量优秀，已基本达到目标院校的申请要求。建议重点优化以下方面：';
-  } else if (overallScore >= 60) {
-    summary = '您的作品集已有较好的基础，但仍有提升空间。建议在以下方面重点加强：';
-  } else {
-    summary = '您的作品集还需要较多的准备工作。建议按照以下优先级进行提升：';
-  }
-
-  const lines = doc.splitTextToSize(summary, pageWidth - margin * 2);
-  doc.text(lines, margin, yPosition);
-  yPosition += lines.length * 7 + 10;
-
-  const highPriorityGaps = abilityGaps.filter((g) => g.gap > 15);
-  if (highPriorityGaps.length > 0) {
-    doc.setFont('helvetica', 'bold');
-    doc.text('高优先级改进项：', margin, yPosition);
-    yPosition += 8;
-    doc.setFont('helvetica', 'normal');
-    highPriorityGaps.slice(0, 3).forEach((gap, i) => {
-      doc.text(`${i + 1}. ${gap.dimension} - 缺口 ${gap.gap} 分`, margin + 5, yPosition);
-      yPosition += 7;
-    });
-    yPosition += 5;
-  }
-
-  const incompleteItems = data.materialChecklist.filter((m) => m.required && !m.completed);
-  if (incompleteItems.length > 0) {
-    doc.setFont('helvetica', 'bold');
-    doc.text('待补充材料：', margin, yPosition);
-    yPosition += 8;
-    doc.setFont('helvetica', 'normal');
-    incompleteItems.slice(0, 5).forEach((item, i) => {
-      doc.text(`${i + 1}. ${item.item}`, margin + 5, yPosition);
-      yPosition += 7;
-    });
-  }
-
-  yPosition = pageHeight - margin;
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'italic');
-  doc.setTextColor(128, 128, 128);
-  doc.text('本报告由作品集诊断工具自动生成，仅供参考', pageWidth / 2, yPosition, { align: 'center' });
-
-  const fileName = `作品集诊断报告_${new Date().toISOString().split('T')[0]}.pdf`;
-  doc.save(fileName);
 }
 
 async function exportElementToPDF(element: HTMLElement): Promise<void> {
@@ -310,6 +284,7 @@ async function exportElementToPDF(element: HTMLElement): Promise<void> {
     scale: 2,
     useCORS: true,
     logging: false,
+    backgroundColor: '#ffffff',
   });
 
   const imgData = canvas.toDataURL('image/png');

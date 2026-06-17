@@ -171,7 +171,7 @@ export default function ProjectEditor({
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="input-field min-h-[100px"
+                className="input-field min-h-[100px]"
                 placeholder="简要描述项目背景、目标和你的贡献..."
                 rows={4}
               />

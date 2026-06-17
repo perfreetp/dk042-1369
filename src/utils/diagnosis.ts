@@ -156,12 +156,20 @@ function calculateBusinessScore(background: Background, projects: Project[]): nu
     (s) => s.category === '商业' || s.category === '管理'
   ).length;
   const bizExperience = background.experience.filter(
-    (e) => e.position.toLowerCase().includes('分析') || e.position.toLowerCase().includes('商业')
+    (e) => {
+      const position = (e.position || '').toLowerCase();
+      const description = (e.description || '').toLowerCase();
+      return position.includes('分析') || position.includes('商业') || 
+             position.includes('产品') || position.includes('市场') ||
+             description.includes('分析') || description.includes('商业');
+    }
   ).length;
   const bizProjects = projects.filter(
-    (p) => p.description.includes('商业') || p.description.includes('市场')
+    (p) => (p.description || '').includes('商业') || (p.description || '').includes('市场')
   ).length;
-  return Math.min(100, bizSkills * 15 + bizExperience * 25 + bizProjects * 20);
+  const hasAnyExperience = background.experience.length > 0;
+  const baseScore = hasAnyExperience ? 15 : 0;
+  return Math.min(100, baseScore + bizSkills * 15 + bizExperience * 25 + bizProjects * 20);
 }
 
 function calculateCommunicationScore(projects: Project[], background: Background): number {
@@ -171,18 +179,36 @@ function calculateCommunicationScore(projects: Project[], background: Background
 }
 
 function calculateExperienceScore(background: Background): number {
+  if (background.experience.length === 0) return 0;
+  
   const expMonths = background.experience.reduce((sum, exp) => {
+    if (!exp.startDate) {
+      return sum + 1;
+    }
     const start = new Date(exp.startDate);
+    if (isNaN(start.getTime())) {
+      return sum + 1;
+    }
     const end = exp.endDate ? new Date(exp.endDate) : new Date();
-    const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-    return sum + months;
+    if (isNaN(end.getTime())) {
+      return sum + 1;
+    }
+    let months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+    if (months < 0) months = 0;
+    return sum + Math.max(1, months);
   }, 0);
-  return Math.min(100, Math.round(expMonths * 2));
+  
+  const hasAnyExperience = background.experience.length > 0;
+  const baseScore = hasAnyExperience ? 20 : 0;
+  const positionBonus = background.experience.filter(e => e.position && e.position.trim()).length * 10;
+  const descriptionBonus = background.experience.filter(e => e.description && e.description.trim()).length * 15;
+  
+  return Math.min(100, Math.round(baseScore + expMonths * 1.5 + positionBonus + descriptionBonus));
 }
 
 function calculateHumanitiesScore(projects: Project[], background: Background): number {
   const humanitiesProjects = projects.filter(
-    (p) => p.description.includes('社会') || p.description.includes('文化') || p.description.includes('环境')
+    (p) => (p.description || '').includes('社会') || (p.description || '').includes('文化') || (p.description || '').includes('环境')
   ).length;
   const humanitySkills = background.skills.filter(
     (s) => s.category === '艺术' || s.category === '人文' || s.category === '社会'
