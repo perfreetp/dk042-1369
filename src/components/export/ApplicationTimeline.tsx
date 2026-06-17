@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Calendar,
   Clock,
@@ -14,9 +14,12 @@ import {
   FileText,
   UserCheck,
   FolderCheck,
+  LayoutGrid,
+  School,
+  ChevronDown,
 } from 'lucide-react';
 import { usePortfolioStore } from '../../store/usePortfolioStore';
-import type { TimelineItem } from '../../types';
+import type { TimelineItem, TargetProgram } from '../../types';
 import Modal from '../ui/Modal';
 
 const categoryConfig: Record<
@@ -60,25 +63,44 @@ const categoryConfig: Record<
   },
 };
 
+type CombinedTimelineItem = TimelineItem & { planId: string; schoolName: string; majorName: string };
+
 export default function ApplicationTimeline() {
   const {
-    timelineItems,
-    generateTimeline,
-    updateTimelineItem,
-    addCustomTimelineItem,
-    deleteTimelineItem,
-    targetProgram,
+    applicationPlans,
+    activePlanId,
+    addApplicationPlan,
+    deleteApplicationPlan,
+    setActivePlan,
+    updatePlanProgram,
+    getActivePlanTimeline,
+    updateActivePlanTimelineItem,
+    addCustomTimelineItemToActivePlan,
+    deleteTimelineItemFromActivePlan,
+    getCombinedTimeline,
   } = usePortfolioStore();
 
+  const [isSummaryView, setIsSummaryView] = useState(false);
+  const [showAddPlanModal, setShowAddPlanModal] = useState(false);
+  const [showEditPlanModal, setShowEditPlanModal] = useState(false);
+  const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [editingItem, setEditingItem] = useState<TimelineItem | null>(null);
-  const [showAddModal, setShowAddModal] = useState(false);
   const [sortBy, setSortBy] = useState<'deadline' | 'importance'>('deadline');
+  const [showPlanDropdown, setShowPlanDropdown] = useState(false);
 
-  useEffect(() => {
-    if (timelineItems.length === 0 && targetProgram?.deadline) {
-      generateTimeline();
-    }
-  }, [generateTimeline, timelineItems.length, targetProgram?.deadline]);
+  const [newPlan, setNewPlan] = useState({
+    school: '',
+    major: '',
+    degree: '硕士',
+    deadline: '',
+  });
+
+  const [editPlan, setEditPlan] = useState({
+    school: '',
+    major: '',
+    degree: '',
+    deadline: '',
+  });
 
   const [newItem, setNewItem] = useState<Omit<TimelineItem, 'id' | 'isCustom'>>({
     title: '',
@@ -90,6 +112,14 @@ export default function ApplicationTimeline() {
     notes: '',
   });
 
+  const activePlan = useMemo(
+    () => applicationPlans.find((p) => p.id === activePlanId) || null,
+    [applicationPlans, activePlanId]
+  );
+
+  const activeTimeline = useMemo(() => getActivePlanTimeline(), [getActivePlanTimeline]);
+  const combinedTimeline = useMemo(() => getCombinedTimeline(), [getCombinedTimeline]);
+
   const getDaysRemaining = (deadline: string) => {
     if (!deadline) return null;
     const date = new Date(deadline);
@@ -100,7 +130,9 @@ export default function ApplicationTimeline() {
     return diff;
   };
 
-  const sortedItems = [...timelineItems].sort((a, b) => {
+  const currentItems = isSummaryView ? combinedTimeline : activeTimeline;
+
+  const sortedItems = [...currentItems].sort((a, b) => {
     if (sortBy === 'deadline') {
       const daysA = getDaysRemaining(a.deadline) ?? 999;
       const daysB = getDaysRemaining(b.deadline) ?? 999;
@@ -111,13 +143,74 @@ export default function ApplicationTimeline() {
     }
   });
 
-  const completedCount = timelineItems.filter((i) => i.completed).length;
-  const totalCount = timelineItems.length;
-  const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+  const calculateProgress = (items: TimelineItem[]) => {
+    const completedCount = items.filter((i) => i.completed).length;
+    const totalCount = items.length;
+    const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+    return { completedCount, totalCount, progress };
+  };
+
+  const progressInfo = useMemo(() => {
+    if (isSummaryView) {
+      return calculateProgress(combinedTimeline);
+    }
+    return calculateProgress(activeTimeline);
+  }, [isSummaryView, combinedTimeline, activeTimeline]);
+
+  const { completedCount, totalCount, progress } = progressInfo;
+
+  const handleAddPlan = () => {
+    if (newPlan.school.trim() && newPlan.major.trim() && newPlan.deadline) {
+      const program: TargetProgram = {
+        id: `prog-${Date.now()}`,
+        school: newPlan.school,
+        major: newPlan.major,
+        degree: newPlan.degree,
+        deadline: newPlan.deadline,
+        requirements: [],
+      };
+      const newPlanData = addApplicationPlan(program);
+      setActivePlan(newPlanData.id);
+      setIsSummaryView(false);
+      setNewPlan({ school: '', major: '', degree: '硕士', deadline: '' });
+      setShowAddPlanModal(false);
+    }
+  };
+
+  const handleDeletePlan = (planId: string) => {
+    if (confirm('确定删除这个申请计划吗？所有相关的时间节点和提交项都将被删除。')) {
+      deleteApplicationPlan(planId);
+      setShowPlanDropdown(false);
+    }
+  };
+
+  const handleOpenEditPlan = () => {
+    if (activePlan) {
+      setEditPlan({
+        school: activePlan.program.school,
+        major: activePlan.program.major,
+        degree: activePlan.program.degree,
+        deadline: activePlan.program.deadline,
+      });
+      setShowEditPlanModal(true);
+    }
+  };
+
+  const handleSaveEditPlan = () => {
+    if (activePlanId && editPlan.school.trim() && editPlan.major.trim() && editPlan.deadline) {
+      updatePlanProgram(activePlanId, {
+        school: editPlan.school,
+        major: editPlan.major,
+        degree: editPlan.degree,
+        deadline: editPlan.deadline,
+      });
+      setShowEditPlanModal(false);
+    }
+  };
 
   const handleAddItem = () => {
-    if (newItem.title.trim()) {
-      addCustomTimelineItem(newItem);
+    if (newItem.title.trim() && !isSummaryView) {
+      addCustomTimelineItemToActivePlan(newItem);
       setNewItem({
         title: '',
         description: '',
@@ -127,14 +220,26 @@ export default function ApplicationTimeline() {
         importance: 'medium',
         notes: '',
       });
-      setShowAddModal(false);
+      setShowAddItemModal(false);
     }
   };
 
   const handleSaveEdit = () => {
-    if (editingItem) {
-      updateTimelineItem(editingItem.id, editingItem);
+    if (editingItem && !isSummaryView) {
+      updateActivePlanTimelineItem(editingItem.id, editingItem);
       setEditingItem(null);
+    }
+  };
+
+  const handleToggleComplete = (id: string, completed: boolean) => {
+    if (!isSummaryView) {
+      updateActivePlanTimelineItem(id, { completed: !completed });
+    }
+  };
+
+  const handleDeleteItem = (id: string) => {
+    if (!isSummaryView && confirm('确定删除这个时间节点吗？')) {
+      deleteTimelineItemFromActivePlan(id);
     }
   };
 
@@ -156,42 +261,221 @@ export default function ApplicationTimeline() {
     return { text: `剩余 ${days} 天`, color: 'text-green-600' };
   };
 
-  if (!targetProgram || !targetProgram.deadline) {
+  const handlePlanSelect = (planId: string | null) => {
+    if (planId === null) {
+      setIsSummaryView(true);
+    } else {
+      setIsSummaryView(false);
+      setActivePlan(planId);
+    }
+    setShowPlanDropdown(false);
+  };
+
+  if (applicationPlans.length === 0) {
     return (
       <div className="card p-6">
         <div className="text-center py-12">
           <div className="w-16 h-16 mx-auto mb-4 bg-zinc-100 rounded-full flex items-center justify-center">
-            <Calendar className="w-8 h-8 text-zinc-400" />
+            <School className="w-8 h-8 text-zinc-400" />
           </div>
-          <h3 className="text-lg font-medium text-zinc-700 mb-2">还未设置目标专业</h3>
-          <p className="text-sm text-zinc-500 max-w-md mx-auto">
-            请先在诊断页选择目标专业并设置截止日期，系统将自动生成申请时间线
+          <h3 className="text-lg font-medium text-zinc-700 mb-2">还没有申请计划</h3>
+          <p className="text-sm text-zinc-500 max-w-md mx-auto mb-6">
+            添加你的第一个申请计划，系统将自动生成申请时间线，帮你追踪关键节点
           </p>
+          <button
+            onClick={() => setShowAddPlanModal(true)}
+            className="btn-primary inline-flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            添加申请计划
+          </button>
         </div>
+
+        <Modal
+          isOpen={showAddPlanModal}
+          onClose={() => setShowAddPlanModal(false)}
+          title="添加申请计划"
+          size="md"
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="input-label">学校名称 *</label>
+              <input
+                type="text"
+                value={newPlan.school}
+                onChange={(e) => setNewPlan({ ...newPlan, school: e.target.value })}
+                className="input-field"
+                placeholder="例如：罗德岛设计学院"
+              />
+            </div>
+            <div>
+              <label className="input-label">专业名称 *</label>
+              <input
+                type="text"
+                value={newPlan.major}
+                onChange={(e) => setNewPlan({ ...newPlan, major: e.target.value })}
+                className="input-field"
+                placeholder="例如：平面设计"
+              />
+            </div>
+            <div>
+              <label className="input-label">学位</label>
+              <select
+                value={newPlan.degree}
+                onChange={(e) => setNewPlan({ ...newPlan, degree: e.target.value })}
+                className="input-field"
+              >
+                <option value="本科">本科</option>
+                <option value="硕士">硕士</option>
+                <option value="博士">博士</option>
+              </select>
+            </div>
+            <div>
+              <label className="input-label">申请截止日期 *</label>
+              <input
+                type="date"
+                value={newPlan.deadline}
+                onChange={(e) => setNewPlan({ ...newPlan, deadline: e.target.value })}
+                className="input-field"
+              />
+            </div>
+            <div className="flex gap-3 pt-4 border-t border-zinc-200">
+              <button
+                onClick={() => setShowAddPlanModal(false)}
+                className="btn-secondary flex-1"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleAddPlan}
+                disabled={!newPlan.school.trim() || !newPlan.major.trim() || !newPlan.deadline}
+                className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                添加计划
+              </button>
+            </div>
+          </div>
+        </Modal>
       </div>
     );
   }
 
   return (
     <div className="card p-6">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h2 className="font-serif text-xl font-semibold text-zinc-900">申请时间线</h2>
           <p className="text-sm text-zinc-500 mt-1">追踪申请关键节点，按优先级安排任务</p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="btn-primary flex items-center gap-2 text-sm"
-        >
-          <Plus className="w-4 h-4" />
-          添加节点
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowAddPlanModal(true)}
+            className="btn-secondary flex items-center gap-2 text-sm"
+          >
+            <Plus className="w-4 h-4" />
+            添加计划
+          </button>
+          <button
+            onClick={() => setShowAddItemModal(true)}
+            disabled={isSummaryView}
+            className="btn-primary flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            title={isSummaryView ? '请先选择一个计划' : '添加节点'}
+          >
+            <Plus className="w-4 h-4" />
+            添加节点
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-6">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => handlePlanSelect(null)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+              isSummaryView
+                ? 'bg-primary-100 text-primary-700 border border-primary-300'
+                : 'bg-zinc-100 text-zinc-600 border border-transparent hover:bg-zinc-200'
+            }`}
+          >
+            <LayoutGrid className="w-4 h-4" />
+            汇总视图
+          </button>
+
+          <div className="relative">
+            <button
+              onClick={() => setShowPlanDropdown(!showPlanDropdown)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                !isSummaryView && activePlan
+                  ? 'bg-primary-100 text-primary-700 border border-primary-300'
+                  : 'bg-zinc-100 text-zinc-600 border border-transparent hover:bg-zinc-200'
+              }`}
+            >
+              <School className="w-4 h-4" />
+              {!isSummaryView && activePlan
+                ? `${activePlan.program.school} - ${activePlan.program.major}`
+                : '选择计划'}
+              <ChevronDown className="w-4 h-4" />
+            </button>
+
+            {showPlanDropdown && (
+              <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-zinc-200 rounded-lg shadow-lg z-10 max-h-64 overflow-y-auto">
+                {applicationPlans.map((plan) => (
+                  <div
+                    key={plan.id}
+                    className="p-3 border-b border-zinc-100 last:border-b-0 hover:bg-zinc-50 flex items-center justify-between gap-2"
+                  >
+                    <button
+                      onClick={() => handlePlanSelect(plan.id)}
+                      className="flex-1 text-left"
+                    >
+                      <div className="font-medium text-zinc-800 text-sm">{plan.program.school}</div>
+                      <div className="text-xs text-zinc-500">
+                        {plan.program.major} · {plan.program.degree}
+                      </div>
+                      {plan.program.deadline && (
+                        <div className="text-xs text-zinc-400 mt-0.5">
+                          截止：{new Date(plan.program.deadline).toLocaleDateString('zh-CN')}
+                        </div>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleDeletePlan(plan.id)}
+                      className="p-1.5 hover:bg-red-100 rounded text-zinc-400 hover:text-red-600 transition-colors flex-shrink-0"
+                      title="删除计划"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {!isSummaryView && activePlan && (
+            <span className="text-xs text-zinc-400 ml-auto">
+              {activePlan.program.school} · {activePlan.program.major}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-4 mb-6">
         <div className="flex-1">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-zinc-700">整体进度</span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-zinc-700">
+                {isSummaryView ? '整体进度' : `${activePlan?.program.school} 进度`}
+              </span>
+              {!isSummaryView && activePlan && (
+                <button
+                  onClick={handleOpenEditPlan}
+                  className="p-1 hover:bg-zinc-100 rounded text-zinc-400 hover:text-primary-600 transition-colors"
+                  title="编辑计划信息"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
             <span className="text-sm text-zinc-500">
               {completedCount} / {totalCount} 项
             </span>
@@ -234,7 +518,9 @@ export default function ApplicationTimeline() {
             <Clock className="w-8 h-8 text-zinc-400" />
           </div>
           <p className="text-zinc-500">暂无时间节点</p>
-          <p className="text-sm text-zinc-400 mt-1">点击右上角按钮添加自定义节点</p>
+          <p className="text-sm text-zinc-400 mt-1">
+            {isSummaryView ? '添加申请计划后将自动生成时间节点' : '点击右上角按钮添加自定义节点'}
+          </p>
         </div>
       ) : (
         <div className="relative">
@@ -245,6 +531,8 @@ export default function ApplicationTimeline() {
               const status = getStatusLabel(days, item.completed);
               const config = categoryConfig[item.category];
               const isEditing = editingItem?.id === item.id;
+              const combinedItem = item as CombinedTimelineItem;
+              const hasSchoolInfo = isSummaryView && combinedItem.schoolName;
 
               return (
                 <div key={item.id} className="relative pl-14">
@@ -341,18 +629,18 @@ export default function ApplicationTimeline() {
                       <>
                         <div className="flex items-start justify-between gap-3 mb-2">
                           <div className="flex items-center gap-2">
-                            <button
-                              onClick={() =>
-                                updateTimelineItem(item.id, { completed: !item.completed })
-                              }
-                              className="mt-0.5 flex-shrink-0"
-                            >
-                              {item.completed ? (
-                                <CheckCircle2 className="w-5 h-5 text-green-500" />
-                              ) : (
-                                <Circle className="w-5 h-5 text-zinc-300 hover:text-primary-500 transition-colors" />
-                              )}
-                            </button>
+                            {!isSummaryView && (
+                              <button
+                                onClick={() => handleToggleComplete(item.id, item.completed)}
+                                className="mt-0.5 flex-shrink-0"
+                              >
+                                {item.completed ? (
+                                  <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                ) : (
+                                  <Circle className="w-5 h-5 text-zinc-300 hover:text-primary-500 transition-colors" />
+                                )}
+                              </button>
+                            )}
                             <h3
                               className={`font-medium ${
                                 item.completed
@@ -371,27 +659,33 @@ export default function ApplicationTimeline() {
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => setEditingItem(item)}
-                              className="p-1.5 hover:bg-white rounded text-zinc-500 hover:text-primary-600 transition-colors"
-                              title="编辑"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (confirm('确定删除这个时间节点吗？')) {
-                                  deleteTimelineItem(item.id);
-                                }
-                              }}
-                              className="p-1.5 hover:bg-red-100 rounded text-zinc-500 hover:text-red-600 transition-colors"
-                              title="删除"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                          {!isSummaryView && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => setEditingItem(item)}
+                                className="p-1.5 hover:bg-white rounded text-zinc-500 hover:text-primary-600 transition-colors"
+                                title="编辑"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteItem(item.id)}
+                                className="p-1.5 hover:bg-red-100 rounded text-zinc-500 hover:text-red-600 transition-colors"
+                                title="删除"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
                         </div>
+
+                        {hasSchoolInfo && (
+                          <div className="mb-2">
+                            <span className="text-xs px-2 py-0.5 bg-white/60 text-zinc-600 rounded border border-zinc-200">
+                              {combinedItem.schoolName} · {combinedItem.majorName}
+                            </span>
+                          </div>
+                        )}
 
                         {item.description && (
                           <p
@@ -438,13 +732,13 @@ export default function ApplicationTimeline() {
                           </span>
                         </div>
 
-                        {item.notes && (
+                        {!isSummaryView && item.notes && (
                           <div className="mt-3 pt-3 border-t border-zinc-200">
                             <input
                               type="text"
                               value={item.notes}
                               onChange={(e) =>
-                                updateTimelineItem(item.id, { notes: e.target.value })
+                                updateActivePlanTimelineItem(item.id, { notes: e.target.value })
                               }
                               placeholder="添加备注..."
                               className="w-full text-sm px-3 py-1.5 bg-white border border-zinc-200 rounded-md focus:outline-none focus:ring-1 focus:ring-primary-500"
@@ -462,8 +756,145 @@ export default function ApplicationTimeline() {
       )}
 
       <Modal
-        isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
+        isOpen={showAddPlanModal}
+        onClose={() => setShowAddPlanModal(false)}
+        title="添加申请计划"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="input-label">学校名称 *</label>
+            <input
+              type="text"
+              value={newPlan.school}
+              onChange={(e) => setNewPlan({ ...newPlan, school: e.target.value })}
+              className="input-field"
+              placeholder="例如：罗德岛设计学院"
+            />
+          </div>
+          <div>
+            <label className="input-label">专业名称 *</label>
+            <input
+              type="text"
+              value={newPlan.major}
+              onChange={(e) => setNewPlan({ ...newPlan, major: e.target.value })}
+              className="input-field"
+              placeholder="例如：平面设计"
+            />
+          </div>
+          <div>
+            <label className="input-label">学位</label>
+            <select
+              value={newPlan.degree}
+              onChange={(e) => setNewPlan({ ...newPlan, degree: e.target.value })}
+              className="input-field"
+            >
+              <option value="本科">本科</option>
+              <option value="硕士">硕士</option>
+              <option value="博士">博士</option>
+            </select>
+          </div>
+          <div>
+            <label className="input-label">申请截止日期 *</label>
+            <input
+              type="date"
+              value={newPlan.deadline}
+              onChange={(e) => setNewPlan({ ...newPlan, deadline: e.target.value })}
+              className="input-field"
+            />
+          </div>
+          <div className="flex gap-3 pt-4 border-t border-zinc-200">
+            <button
+              onClick={() => setShowAddPlanModal(false)}
+              className="btn-secondary flex-1"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleAddPlan}
+              disabled={!newPlan.school.trim() || !newPlan.major.trim() || !newPlan.deadline}
+              className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              添加计划
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showEditPlanModal}
+        onClose={() => setShowEditPlanModal(false)}
+        title="编辑申请计划"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="input-label">学校名称 *</label>
+            <input
+              type="text"
+              value={editPlan.school}
+              onChange={(e) => setEditPlan({ ...editPlan, school: e.target.value })}
+              className="input-field"
+              placeholder="例如：罗德岛设计学院"
+            />
+          </div>
+          <div>
+            <label className="input-label">专业名称 *</label>
+            <input
+              type="text"
+              value={editPlan.major}
+              onChange={(e) => setEditPlan({ ...editPlan, major: e.target.value })}
+              className="input-field"
+              placeholder="例如：平面设计"
+            />
+          </div>
+          <div>
+            <label className="input-label">学位</label>
+            <select
+              value={editPlan.degree}
+              onChange={(e) => setEditPlan({ ...editPlan, degree: e.target.value })}
+              className="input-field"
+            >
+              <option value="本科">本科</option>
+              <option value="硕士">硕士</option>
+              <option value="博士">博士</option>
+            </select>
+          </div>
+          <div>
+            <label className="input-label">申请截止日期 *</label>
+            <input
+              type="date"
+              value={editPlan.deadline}
+              onChange={(e) => setEditPlan({ ...editPlan, deadline: e.target.value })}
+              className="input-field"
+            />
+          </div>
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <p className="text-sm text-amber-700">
+              <span className="font-medium">提示：</span>修改截止日期后，系统生成的时间节点会自动调整相对位置，你手动添加的自定义节点保持不变。
+            </p>
+          </div>
+          <div className="flex gap-3 pt-4 border-t border-zinc-200">
+            <button
+              onClick={() => setShowEditPlanModal(false)}
+              className="btn-secondary flex-1"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleSaveEditPlan}
+              disabled={!editPlan.school.trim() || !editPlan.major.trim() || !editPlan.deadline}
+              className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              保存修改
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showAddItemModal}
+        onClose={() => setShowAddItemModal(false)}
         title="添加时间节点"
         size="lg"
       >
@@ -546,7 +977,7 @@ export default function ApplicationTimeline() {
           </div>
           <div className="flex gap-3 pt-4 border-t border-zinc-200">
             <button
-              onClick={() => setShowAddModal(false)}
+              onClick={() => setShowAddItemModal(false)}
               className="btn-secondary flex-1"
             >
               取消

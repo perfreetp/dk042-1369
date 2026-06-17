@@ -42,9 +42,9 @@ export default function ProjectEditor({
   const [formData, setFormData] = useState<Omit<Project, 'id' | 'createdAt' | 'updatedAt'>>(emptyProject);
   const [activeTab, setActiveTab] = useState<'basic' | 'process'>('basic');
 
-  useEffect(() => {
+  const getInitialFormData = () => {
     if (project) {
-      setFormData({
+      return {
         title: project.title,
         startDate: project.startDate,
         endDate: project.endDate,
@@ -53,13 +53,23 @@ export default function ProjectEditor({
         outputs: [...project.outputs],
         difficulties: [...project.difficulties],
         growth: project.growth,
-        processNodes: [...project.processNodes],
+        processNodes: project.processNodes.map((n) => ({ ...n })),
         order: project.order,
-      });
-    } else {
-      setFormData({ ...emptyProject, order: nextOrder });
+      };
     }
-  }, [project, nextOrder, isOpen]);
+    return { ...emptyProject, order: nextOrder, outputs: [], difficulties: [], processNodes: [] };
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      setFormData(getInitialFormData());
+      setActiveTab('basic');
+    }
+  }, [isOpen, project, nextOrder]);
+
+  const handleCancel = () => {
+    onClose();
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -308,7 +318,7 @@ export default function ProjectEditor({
         )}
 
         <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-zinc-200">
-          <button type="button" onClick={onClose} className="btn-secondary">
+          <button type="button" onClick={handleCancel} className="btn-secondary">
             取消
           </button>
           <button type="submit" className="btn-primary">

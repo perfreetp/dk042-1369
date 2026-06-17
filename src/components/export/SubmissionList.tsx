@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import {
   CheckCircle2,
   Circle,
@@ -12,6 +12,9 @@ import {
   X,
   Save,
   ChevronDown,
+  LayoutGrid,
+  School,
+  Globe,
 } from 'lucide-react';
 import { usePortfolioStore } from '../../store/usePortfolioStore';
 import type { SubmissionItem } from '../../types';
@@ -39,20 +42,30 @@ const categoryIcons: Record<string, string> = {
   '其他材料': '📋',
 };
 
+type CombinedSubmissionItem = SubmissionItem & {
+  planId?: string;
+  schoolName?: string;
+  majorName?: string;
+};
+
 export default function SubmissionList() {
   const {
-    targetProgram,
-    submissionItems,
-    generateSubmissionList,
-    regenerateSubmissionList,
-    updateSubmissionItem,
-    addCustomSubmissionItem,
-    deleteSubmissionItem,
+    applicationPlans,
+    activePlanId,
+    setActivePlan,
+    getActivePlanSubmissions,
+    updateActivePlanSubmissionItem,
+    addCustomSubmissionItemToActivePlan,
+    deleteSubmissionItemFromActivePlan,
+    getCombinedSubmissions,
+    regenerateActivePlanSubmissions,
   } = usePortfolioStore();
 
+  const [isSummaryView, setIsSummaryView] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showCategoryMenu, setShowCategoryMenu] = useState<string | null>(null);
+  const [showPlanDropdown, setShowPlanDropdown] = useState(false);
 
   const [newItem, setNewItem] = useState<Omit<SubmissionItem, 'id' | 'isCustom'>>({
     category: '其他材料',
@@ -61,37 +74,51 @@ export default function SubmissionList() {
     completed: false,
     notes: '',
   });
+  const [newItemIsPublic, setNewItemIsPublic] = useState(false);
 
   const [editForm, setEditForm] = useState<Partial<SubmissionItem>>({});
 
-  useEffect(() => {
-    if (submissionItems.length === 0) {
-      generateSubmissionList();
-    }
-  }, [generateSubmissionList, submissionItems.length]);
+  const activePlan = useMemo(
+    () => applicationPlans.find((p) => p.id === activePlanId) || null,
+    [applicationPlans, activePlanId]
+  );
 
-  const groupedItems = submissionItems.reduce((acc, item) => {
+  const activeSubmissions = useMemo(
+    () => getActivePlanSubmissions(),
+    [getActivePlanSubmissions]
+  );
+
+  const combinedSubmissions = useMemo(
+    () => getCombinedSubmissions(),
+    [getCombinedSubmissions]
+  );
+
+  const currentItems = isSummaryView ? combinedSubmissions : activeSubmissions;
+
+  const groupedItems = currentItems.reduce((acc, item) => {
     if (!acc[item.category]) {
       acc[item.category] = [];
     }
     acc[item.category].push(item);
     return acc;
-  }, {} as Record<string, typeof submissionItems>);
+  }, {} as Record<string, typeof currentItems>);
 
   const toggleItem = (id: string) => {
-    const item = submissionItems.find((i) => i.id === id);
-    if (item) {
-      updateSubmissionItem(id, { completed: !item.completed });
+    const item = currentItems.find((i) => i.id === id);
+    if (item && !isSummaryView) {
+      updateActivePlanSubmissionItem(id, { completed: !item.completed });
     }
   };
 
   const updateNotes = (id: string, notes: string) => {
-    updateSubmissionItem(id, { notes });
+    if (!isSummaryView) {
+      updateActivePlanSubmissionItem(id, { notes });
+    }
   };
 
   const handleAddItem = () => {
-    if (newItem.item.trim()) {
-      addCustomSubmissionItem(newItem);
+    if (newItem.item.trim() && !isSummaryView) {
+      addCustomSubmissionItemToActivePlan(newItem, newItemIsPublic);
       setNewItem({
         category: '其他材料',
         item: '',
@@ -99,11 +126,13 @@ export default function SubmissionList() {
         completed: false,
         notes: '',
       });
+      setNewItemIsPublic(false);
       setShowAddModal(false);
     }
   };
 
   const startEdit = (item: SubmissionItem) => {
+    if (isSummaryView) return;
     setEditingId(item.id);
     setEditForm({
       category: item.category,
@@ -114,7 +143,7 @@ export default function SubmissionList() {
   };
 
   const saveEdit = (id: string) => {
-    updateSubmissionItem(id, editForm);
+    updateActivePlanSubmissionItem(id, editForm);
     setEditingId(null);
     setEditForm({});
   };
@@ -126,19 +155,24 @@ export default function SubmissionList() {
   };
 
   const handleDelete = (id: string, isCustom: boolean | undefined) => {
+    if (isSummaryView) return;
     if (isCustom) {
       if (confirm('确定删除这个自定义项吗？')) {
-        deleteSubmissionItem(id);
+        deleteSubmissionItemFromActivePlan(id);
       }
     } else {
       if (confirm('系统生成的项删除后可通过「重新生成」恢复。确定删除吗？')) {
-        deleteSubmissionItem(id);
+        deleteSubmissionItemFromActivePlan(id);
       }
     }
   };
 
   const handleRegenerate = () => {
-    if (submissionItems.some((i) => i.isCustom) || submissionItems.some((i) => i.completed || i.notes)) {
+    if (isSummaryView) return;
+    if (
+      activeSubmissions.some((i) => i.isCustom) ||
+      activeSubmissions.some((i) => i.completed || i.notes)
+    ) {
       if (
         !confirm(
           '重新生成将保留你已勾选的完成状态、备注和自定义项，但会恢复系统默认项的分类和截止日期。是否继续？'
@@ -147,11 +181,21 @@ export default function SubmissionList() {
         return;
       }
     }
-    regenerateSubmissionList();
+    regenerateActivePlanSubmissions();
   };
 
-  const completedCount = submissionItems.filter((i) => i.completed).length;
-  const totalCount = submissionItems.length;
+  const handlePlanSelect = (planId: string | null) => {
+    if (planId === null) {
+      setIsSummaryView(true);
+    } else {
+      setIsSummaryView(false);
+      setActivePlan(planId);
+    }
+    setShowPlanDropdown(false);
+  };
+
+  const completedCount = currentItems.filter((i) => i.completed).length;
+  const totalCount = currentItems.length;
   const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
 
   const getDeadlineStatus = (deadline: string) => {
@@ -171,9 +215,28 @@ export default function SubmissionList() {
     return { status: 'plenty', label: `剩余 ${daysLeft} 天` };
   };
 
+  if (applicationPlans.length === 0) {
+    return (
+      <div className="card p-6">
+        <div className="text-center py-12">
+          <div className="w-16 h-16 mx-auto mb-4 bg-zinc-100 rounded-full flex items-center justify-center">
+            <School className="w-8 h-8 text-zinc-400" />
+          </div>
+          <h3 className="text-lg font-medium text-zinc-700 mb-2">还没有申请计划</h3>
+          <p className="text-sm text-zinc-500 max-w-md mx-auto mb-6">
+            添加你的第一个申请计划，系统将自动生成提交清单，帮你追踪申请材料准备进度
+          </p>
+          <p className="text-sm text-zinc-400">
+            请在「申请时间线」中添加申请计划
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="card p-6">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h2 className="font-serif text-xl font-semibold text-zinc-900">提交清单</h2>
           <p className="text-sm text-zinc-500 mt-1">申请材料准备清单，追踪每一项的完成状态</p>
@@ -181,14 +244,18 @@ export default function SubmissionList() {
         <div className="flex gap-2">
           <button
             onClick={() => setShowAddModal(true)}
-            className="btn-primary flex items-center gap-2 text-sm"
+            disabled={isSummaryView}
+            className="btn-primary flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            title={isSummaryView ? '请先选择一个计划' : '新增项'}
           >
             <Plus className="w-4 h-4" />
             新增项
           </button>
           <button
             onClick={handleRegenerate}
-            className="btn-secondary text-sm flex items-center gap-2"
+            disabled={isSummaryView}
+            className="btn-secondary text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={isSummaryView ? '请先选择一个计划' : '重新生成'}
           >
             <RefreshCw className="w-4 h-4" />
             重新生成
@@ -196,14 +263,82 @@ export default function SubmissionList() {
         </div>
       </div>
 
-      {targetProgram && targetProgram.deadline && (
+      <div className="mb-6">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => handlePlanSelect(null)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+              isSummaryView
+                ? 'bg-primary-100 text-primary-700 border border-primary-300'
+                : 'bg-zinc-100 text-zinc-600 border border-transparent hover:bg-zinc-200'
+            }`}
+          >
+            <LayoutGrid className="w-4 h-4" />
+            汇总视图
+          </button>
+
+          <div className="relative">
+            <button
+              onClick={() => setShowPlanDropdown(!showPlanDropdown)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                !isSummaryView && activePlan
+                  ? 'bg-primary-100 text-primary-700 border border-primary-300'
+                  : 'bg-zinc-100 text-zinc-600 border border-transparent hover:bg-zinc-200'
+              }`}
+            >
+              <School className="w-4 h-4" />
+              {!isSummaryView && activePlan
+                ? `${activePlan.program.school} - ${activePlan.program.major}`
+                : '选择学校'}
+              <ChevronDown className="w-4 h-4" />
+            </button>
+
+            {showPlanDropdown && (
+              <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-zinc-200 rounded-lg shadow-lg z-10 max-h-64 overflow-y-auto">
+                {applicationPlans.map((plan) => (
+                  <div
+                    key={plan.id}
+                    className="p-3 border-b border-zinc-100 last:border-b-0 hover:bg-zinc-50 flex items-center justify-between gap-2"
+                  >
+                    <button
+                      onClick={() => handlePlanSelect(plan.id)}
+                      className="flex-1 text-left"
+                    >
+                      <div className="font-medium text-zinc-800 text-sm">
+                        {plan.program.school}
+                      </div>
+                      <div className="text-xs text-zinc-500">
+                        {plan.program.major} · {plan.program.degree}
+                      </div>
+                      {plan.program.deadline && (
+                        <div className="text-xs text-zinc-400 mt-0.5">
+                          截止：
+                          {new Date(plan.program.deadline).toLocaleDateString('zh-CN')}
+                        </div>
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {!isSummaryView && activePlan && (
+            <span className="text-xs text-zinc-400 ml-auto">
+              {activePlan.program.school} · {activePlan.program.major}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {!isSummaryView && activePlan && activePlan.program.deadline && (
         <div className="mb-6 p-4 bg-accent-50 border border-accent-200 rounded-lg">
           <div className="flex items-center gap-3">
             <Calendar className="w-5 h-5 text-accent-600" />
             <div>
               <p className="text-sm text-accent-600 font-medium">申请截止日期</p>
               <p className="font-semibold text-accent-900">
-                {new Date(targetProgram.deadline).toLocaleDateString('zh-CN', {
+                {new Date(activePlan.program.deadline).toLocaleDateString('zh-CN', {
                   year: 'numeric',
                   month: 'long',
                   day: 'numeric',
@@ -213,16 +348,16 @@ export default function SubmissionList() {
             <div className="ml-auto text-right">
               <p
                 className={`text-sm font-medium ${
-                  getDeadlineStatus(targetProgram.deadline).status === 'overdue'
+                  getDeadlineStatus(activePlan.program.deadline).status === 'overdue'
                     ? 'text-red-600'
-                    : getDeadlineStatus(targetProgram.deadline).status === 'urgent'
+                    : getDeadlineStatus(activePlan.program.deadline).status === 'urgent'
                     ? 'text-orange-600'
-                    : getDeadlineStatus(targetProgram.deadline).status === 'soon'
+                    : getDeadlineStatus(activePlan.program.deadline).status === 'soon'
                     ? 'text-amber-600'
                     : 'text-green-600'
                 }`}
               >
-                {getDeadlineStatus(targetProgram.deadline).label}
+                {getDeadlineStatus(activePlan.program.deadline).label}
               </p>
             </div>
           </div>
@@ -231,7 +366,9 @@ export default function SubmissionList() {
 
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-zinc-700">总体进度</span>
+          <span className="text-sm font-medium text-zinc-700">
+            {isSummaryView ? '整体进度' : `${activePlan?.program.school} 进度`}
+          </span>
           <span className="text-sm text-zinc-500">
             {completedCount} / {totalCount}
           </span>
@@ -264,6 +401,9 @@ export default function SubmissionList() {
               {categoryItems.map((item) => {
                 const deadlineStatus = getDeadlineStatus(item.deadline);
                 const isEditing = editingId === item.id;
+                const combinedItem = item as CombinedSubmissionItem;
+                const hasSchoolInfo = isSummaryView && combinedItem.schoolName;
+                const isPublicItem = item.isPublic;
 
                 return (
                   <div
@@ -351,12 +491,19 @@ export default function SubmissionList() {
                       <div className="flex items-start gap-3">
                         <button
                           onClick={() => toggleItem(item.id)}
-                          className="mt-0.5 flex-shrink-0"
+                          disabled={isSummaryView}
+                          className={`mt-0.5 flex-shrink-0 ${isSummaryView ? 'cursor-default' : ''}`}
                         >
                           {item.completed ? (
                             <CheckCircle2 className="w-5 h-5 text-green-500" />
                           ) : (
-                            <Circle className="w-5 h-5 text-zinc-300 hover:text-primary-500 transition-colors" />
+                            <Circle
+                              className={`w-5 h-5 transition-colors ${
+                                isSummaryView
+                                  ? 'text-zinc-300'
+                                  : 'text-zinc-300 hover:text-primary-500'
+                              }`}
+                            />
                           )}
                         </button>
                         <div className="flex-1 min-w-0">
@@ -371,9 +518,20 @@ export default function SubmissionList() {
                               >
                                 {item.item}
                               </p>
+                              {isPublicItem && (
+                                <span className="text-xs px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full flex items-center gap-1">
+                                  <Globe className="w-3 h-3" />
+                                  公共材料
+                                </span>
+                              )}
                               {item.isCustom && (
                                 <span className="text-xs px-2 py-0.5 bg-primary-100 text-primary-700 rounded-full">
                                   自定义
+                                </span>
+                              )}
+                              {hasSchoolInfo && !isPublicItem && (
+                                <span className="text-xs px-2 py-0.5 bg-zinc-100 text-zinc-600 rounded-full">
+                                  {combinedItem.schoolName} · {combinedItem.majorName}
                                 </span>
                               )}
                               <span className="text-xs px-2 py-0.5 bg-zinc-100 text-zinc-600 rounded-full">
@@ -404,29 +562,38 @@ export default function SubmissionList() {
                                     <span>{deadlineStatus.label}</span>
                                   </div>
                                 )}
-                              <button
-                                onClick={() => startEdit(item)}
-                                className="p-1.5 hover:bg-zinc-100 rounded text-zinc-500 hover:text-primary-600 transition-colors"
-                                title="编辑分类和截止日期"
-                              >
-                                <Edit3 className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDelete(item.id, item.isCustom)}
-                                className="p-1.5 hover:bg-red-100 rounded text-zinc-500 hover:text-red-600 transition-colors"
-                                title="删除"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              {!isSummaryView && (
+                                <>
+                                  <button
+                                    onClick={() => startEdit(item)}
+                                    className="p-1.5 hover:bg-zinc-100 rounded text-zinc-500 hover:text-primary-600 transition-colors"
+                                    title="编辑分类和截止日期"
+                                  >
+                                    <Edit3 className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDelete(item.id, item.isCustom)}
+                                    className="p-1.5 hover:bg-red-100 rounded text-zinc-500 hover:text-red-600 transition-colors"
+                                    title="删除"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </div>
-                          <input
-                            type="text"
-                            value={item.notes || ''}
-                            onChange={(e) => updateNotes(item.id, e.target.value)}
-                            placeholder="添加备注..."
-                            className="mt-2 w-full px-3 py-1.5 text-sm border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                          />
+                          {!isSummaryView && (
+                            <input
+                              type="text"
+                              value={item.notes || ''}
+                              onChange={(e) => updateNotes(item.id, e.target.value)}
+                              placeholder="添加备注..."
+                              className="mt-2 w-full px-3 py-1.5 text-sm border border-zinc-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            />
+                          )}
+                          {isSummaryView && item.notes && (
+                            <p className="mt-2 text-sm text-zinc-500">{item.notes}</p>
+                          )}
                         </div>
                       </div>
                     )}
@@ -438,13 +605,15 @@ export default function SubmissionList() {
         ))}
       </div>
 
-      {submissionItems.length === 0 && (
+      {currentItems.length === 0 && (
         <div className="text-center py-12">
           <div className="w-16 h-16 mx-auto mb-4 bg-zinc-100 rounded-full flex items-center justify-center">
             <CheckCircle2 className="w-8 h-8 text-zinc-400" />
           </div>
           <p className="text-zinc-500">暂无提交项</p>
-          <p className="text-sm text-zinc-400 mt-1">选择目标专业后将自动生成清单，或手动添加</p>
+          <p className="text-sm text-zinc-400 mt-1">
+            {isSummaryView ? '添加申请计划后将自动生成提交清单' : '点击右上角按钮添加自定义项'}
+          </p>
         </div>
       )}
 
@@ -488,6 +657,32 @@ export default function SubmissionList() {
                 onChange={(e) => setNewItem({ ...newItem, deadline: e.target.value })}
                 className="input-field"
               />
+            </div>
+          </div>
+          <div>
+            <label className="input-label">材料类型</label>
+            <div className="flex gap-4 mt-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  checked={!newItemIsPublic}
+                  onChange={() => setNewItemIsPublic(false)}
+                  className="w-4 h-4 text-primary-600 focus:ring-primary-500"
+                />
+                <span className="text-sm text-zinc-700">当前学校专属</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  checked={newItemIsPublic}
+                  onChange={() => setNewItemIsPublic(true)}
+                  className="w-4 h-4 text-primary-600 focus:ring-primary-500"
+                />
+                <span className="text-sm text-zinc-700 flex items-center gap-1">
+                  <Globe className="w-3.5 h-3.5 text-teal-600" />
+                  公共材料（所有学校共享）
+                </span>
+              </label>
             </div>
           </div>
           <div>

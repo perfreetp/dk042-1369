@@ -113,6 +113,8 @@ export interface SubmissionItem {
   notes: string;
   isCustom?: boolean;
   daysOffset?: number;
+  programId?: string;
+  isPublic?: boolean;
 }
 
 export interface TimelineItem {
@@ -125,6 +127,7 @@ export interface TimelineItem {
   importance: 'high' | 'medium' | 'low';
   notes: string;
   isCustom?: boolean;
+  programId?: string;
 }
 
 export interface VersionDiff {
@@ -145,4 +148,12 @@ export interface ProgramInfo {
   degree: string;
   description: string;
   requirements: ProgramRequirement[];
+}
+
+export interface ApplicationPlan {
+  id: string;
+  program: TargetProgram;
+  timelineItems: TimelineItem[];
+  submissionItems: SubmissionItem[];
+  createdAt: number;
 }
